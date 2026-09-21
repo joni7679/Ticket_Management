@@ -24,10 +24,14 @@ export function LoginPage() {
   const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<LoginValues>({ resolver: zodResolver(schema) });
 
   const onSubmit = async (values: LoginValues) => {
-    const response = await loginRequest(values);
-    dispatch(setCredentials({ user: response.user, accessToken: response.accessToken }));
-    toast.success('Welcome back');
-    navigate('/dashboard');
+    try {
+      const response = await loginRequest(values);
+      dispatch(setCredentials({ user: response.user, accessToken: response.accessToken }));
+      toast.success('Welcome back');
+      navigate('/dashboard');
+    } catch (error: any) {
+      toast.error(error?.response?.data?.message || 'Login failed');
+    }
   };
 
   return (

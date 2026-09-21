@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { createRole, deleteRole, listPermissions, listRoles, updateRole } from '../controllers/role.controller.js';
 import { protect, permitPermissions } from '../middleware/auth.js';
 import { validateBody } from '../middleware/validate.js';
-import { permissionSchema, roleSchema } from '../validators/role.validator.js';
+import { roleSchema } from '../validators/role.validator.js';
 import { PERMISSIONS } from '../constants/roles.js';
 
 export const roleRouter = Router();

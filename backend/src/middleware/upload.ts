@@ -1,7 +1,7 @@
 import multer from 'multer';
-import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
+import { uploadsDir, uploadsSubdir } from '../config/uploads.js';
 
 // Allowed MIME types for attachments
 const ALLOWED_MIME_TYPES = {
@@ -24,19 +24,13 @@ const FILE_SIZE_LIMITS = {
   default: 10 * 1024 * 1024    // 10MB default
 };
 
-// Create upload directories
+// Create upload directories (single source of truth: config/uploads.ts)
 const uploadDirs = {
-  root: path.resolve('uploads'),
-  images: path.resolve('uploads/images'),
-  documents: path.resolve('uploads/documents'),
-  avatars: path.resolve('uploads/avatars')
+  root: uploadsDir,
+  images: uploadsSubdir('images'),
+  documents: uploadsSubdir('documents'),
+  avatars: uploadsSubdir('avatars')
 };
-
-Object.values(uploadDirs).forEach(dir => {
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
-  }
-});
 
 // Sanitize filename to prevent directory traversal
 function sanitizeFilename(originalname: string): string {
@@ -86,7 +80,7 @@ const fileFilter = (_req: any, file: Express.Multer.File, cb: multer.FileFilterC
 };
 
 // Calculate file size limit based on MIME type
-const getFileSizeLimit = (mimeType: string): number => {
+export const getFileSizeLimit = (mimeType: string): number => {
   if (mimeType.startsWith('image/')) return FILE_SIZE_LIMITS.image;
   if (mimeType.startsWith('application/pdf')) return FILE_SIZE_LIMITS.document;
   return FILE_SIZE_LIMITS.default;

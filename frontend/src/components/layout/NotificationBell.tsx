@@ -1,39 +1,71 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Bell } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
+import { io, type Socket } from 'socket.io-client';
 import { listNotifications } from '../../services/notifications';
+import { getAccessToken } from '../../services/token';
+import { useAppSelector } from '../../hooks/useAppSelector';
 import { cn } from '../../utils/cn';
 
+function resolveSocketUrl() {
+  const raw = (import.meta.env.VITE_API_URL as string | undefined) ?? 'http://localhost:5000';
+  // VITE_API_URL may include a trailing /api — sockets live at the origin root.
+  return raw.replace(/\/api\/?$/, '').replace(/\/$/, '');
+}
+
 export function NotificationBell() {
+  const user = useAppSelector((state) => state.auth.user);
   const [unreadCount, setUnreadCount] = useState(0);
   const lastFetchRef = useRef<number>(0);
   const location = useLocation();
   const isNotificationsPage = location.pathname === '/notifications';
 
-  const loadNotifications = async () => {
+  const loadNotifications = useCallback(async (force = false) => {
+    if (!user) {
+      setUnreadCount(0);
+      return;
+    }
     const now = Date.now();
-    if (now - lastFetchRef.current < 5000) return;
+    if (!force && now - lastFetchRef.current < 5000) return;
     lastFetchRef.current = now;
-
     try {
       const notifications = await listNotifications();
-      const count = notifications.filter((n: any) => !n.readAt).length;
-      setUnreadCount(count);
+      setUnreadCount(notifications.filter((n: any) => !n.readAt).length);
     } catch (error) {
       console.error('Failed to load notifications', error);
     }
-  };
+  }, [user]);
 
   useEffect(() => {
-    if (isNotificationsPage) return;
-
-    void loadNotifications();
+    if (isNotificationsPage || !user) return;
+    void loadNotifications(true);
     const interval = window.setInterval(() => {
       void loadNotifications();
     }, 30000);
-
     return () => clearInterval(interval);
-  }, [isNotificationsPage]);
+  }, [isNotificationsPage, user, loadNotifications]);
+
+  useEffect(() => {
+    if (!user) return;
+    const socket: Socket = io(resolveSocketUrl(), {
+      transports: ['websocket', 'polling'],
+      auth: { token: getAccessToken() || undefined },
+      reconnection: true,
+      reconnectionAttempts: 5
+    });
+    socket.emit('authenticate', getAccessToken() || '');
+    const onNotification = () => {
+      void loadNotifications(true);
+    };
+    socket.on('notification', onNotification);
+    socket.on('connect_error', (err) => {
+      console.warn('Notification socket error', err.message);
+    });
+    return () => {
+      socket.off('notification', onNotification);
+      socket.disconnect();
+    };
+  }, [user, loadNotifications]);
 
   return (
     <Link

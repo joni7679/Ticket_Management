@@ -15,6 +15,7 @@ import { notificationRouter } from './routes/notification.routes.js';
 import { auditLogRouter } from './routes/audit-log.routes.js';
 import { errorHandler, notFound } from './middleware/error.js';
 import { env } from './config/env.js';
+import { uploadsDir } from './config/uploads.js';
 
 export const app = express();
 
@@ -48,17 +49,17 @@ app.use('/api', (req, res, next) => {
 });
 
 // Serve uploaded files with proper caching headers
-app.use('/uploads', express.static('uploads', {
+app.use('/uploads', express.static(uploadsDir, {
   maxAge: '7d',  // Cache for 7 days
   etag: false,
-  setHeaders: (res, path) => {
+  setHeaders: (res, filePath) => {
     res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
     // Add security headers for file downloads
-    if (path.endsWith('.pdf') || path.endsWith('.doc') || path.endsWith('.docx')) {
+    if (filePath.endsWith('.pdf') || filePath.endsWith('.doc') || filePath.endsWith('.docx')) {
       res.setHeader('Content-Disposition', 'inline');
     }
     // Prevent script execution on image files
-    if (path.endsWith('.svg')) {
+    if (filePath.endsWith('.svg')) {
       res.setHeader('Content-Type', 'image/svg+xml; charset=utf-8');
       res.setHeader('X-Content-Type-Options', 'nosniff');
     }

@@ -27,10 +27,14 @@ export function RegisterPage() {
   const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<RegisterValues>({ resolver: zodResolver(schema) });
 
   const onSubmit = async (values: RegisterValues) => {
-    const response = await registerRequest(values);
-    dispatch(setCredentials({ user: response.user, accessToken: response.accessToken }));
-    toast.success('Account created');
-    navigate('/dashboard');
+    try {
+      const response = await registerRequest(values);
+      dispatch(setCredentials({ user: response.user, accessToken: response.accessToken }));
+      toast.success('Account created');
+      navigate('/dashboard');
+    } catch (error: any) {
+      toast.error(error?.response?.data?.message || 'Registration failed');
+    }
   };
 
   return (

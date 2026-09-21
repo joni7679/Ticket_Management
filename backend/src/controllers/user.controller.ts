@@ -14,6 +14,8 @@ function safeUser(user: any) {
   return safePlain;
 }
 
+const ALLOWED_USER_UPDATE_FIELDS = ['fullName', 'email', 'phoneNumber', 'companyName', 'whatsappPhone', 'departmentId', 'status'];
+
 export const listUsers = asyncHandler(async (_req: Request, res: Response) => {
   const users = await User.find().sort({ createdAt: -1 }).populate('departmentId');
   res.json({ items: users.map(safeUser) });
@@ -42,13 +44,27 @@ export const getUser = asyncHandler(async (req: Request, res: Response) => {
 });
 
 export const updateUser = asyncHandler(async (req: Request, res: Response) => {
-  const user = await User.findByIdAndUpdate(req.params.id, req.body, { new: true }).populate('departmentId');
+  const user = await User.findById(req.params.id);
   if (!user) {
     throw new ApiError(404, 'User not found');
   }
+
   if (req.body.roleKey) {
     await rotateUserRole(user._id.toString(), req.body.roleKey);
   }
+
+  const updateData: Record<string, unknown> = {};
+  for (const field of ALLOWED_USER_UPDATE_FIELDS) {
+    if (req.body[field] !== undefined) {
+      updateData[field] = req.body[field];
+    }
+  }
+
+  if (Object.keys(updateData).length > 0) {
+    Object.assign(user, updateData);
+    await user.save();
+  }
+
   await logAudit({ actorId: req.user?._id.toString(), action: 'update_user', entityType: 'User', entityId: user._id.toString(), after: user, ip: req.ip, userAgent: req.get('user-agent') ?? '' });
   res.json({ user: safeUser(user) });
 });
@@ -75,7 +91,6 @@ export const updateProfile = asyncHandler(async (req: Request, res: Response) =>
   if (req.body.fullName) {
     user.fullName = String(req.body.fullName).trim();
   }
-
   if (req.body.email) {
     const nextEmail = String(req.body.email).toLowerCase().trim();
     const existing = await User.findOne({ email: nextEmail, _id: { $ne: user._id } });
@@ -84,20 +99,36 @@ export const updateProfile = asyncHandler(async (req: Request, res: Response) =>
     }
     user.email = nextEmail;
   }
-
   if (req.body.companyName !== undefined) {
     user.companyName = String(req.body.companyName).trim();
   }
-
   if (req.body.phoneNumber !== undefined) {
     user.phoneNumber = String(req.body.phoneNumber).trim();
   }
-
   if (req.body.whatsappPhone !== undefined) {
     user.whatsappPhone = String(req.body.whatsappPhone).trim();
+  }
+  if (req.body.avatarUrl !== undefined) {
+    user.avatarUrl = String(req.body.avatarUrl);
   }
 
   await user.save();
   await logAudit({ actorId: req.user?._id.toString(), action: 'update_profile', entityType: 'User', entityId: user._id.toString(), after: user, ip: req.ip, userAgent: req.get('user-agent') ?? '' });
+  res.json({ user: safeUser(user) });
+});
+
+export const uploadAvatarController = asyncHandler(async (req: Request, res: Response) => {
+  const user = await User.findById(req.user?._id);
+  if (!user) {
+    throw new ApiError(404, 'User not found');
+  }
+
+  if (req.file) {
+    const avatarUrl = `/uploads/avatars/${req.file.filename}`;
+    user.avatarUrl = avatarUrl;
+    await user.save();
+  }
+
+  await logAudit({ actorId: req.user?._id.toString(), action: 'update_avatar', entityType: 'User', entityId: user._id.toString(), after: user, ip: req.ip, userAgent: req.get('user-agent') ?? '' });
   res.json({ user: safeUser(user) });
 });

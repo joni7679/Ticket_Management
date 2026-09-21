@@ -6,6 +6,7 @@ import { LoginPage } from '../pages/auth/LoginPage';
 import { RegisterPage } from '../pages/auth/RegisterPage';
 import { ForgotPasswordPage } from '../pages/auth/ForgotPasswordPage';
 import { ResetPasswordPage } from '../pages/auth/ResetPasswordPage';
+import { VerifyEmailPage } from '../pages/auth/VerifyEmailPage';
 import { DashboardPage } from '../pages/DashboardPage';
 import { TicketsPage } from '../pages/TicketsPage';
 import { TicketCreatePage } from '../pages/TicketCreatePage';
@@ -32,12 +33,13 @@ export function AppRoutes() {
       <Route path="/register" element={<RegisterPage />} />
       <Route path="/forgot-password" element={<ForgotPasswordPage />} />
       <Route path="/reset-password" element={<ResetPasswordPage />} />
+      <Route path="/verify-email" element={<VerifyEmailPage />} />
       <Route element={<ProtectedRoute><AppShell /></ProtectedRoute>}>
         <Route path="/dashboard" element={<RoleGate roles={['super_admin', 'admin', 'support_agent']}><DashboardPage /></RoleGate>} />
         <Route path="/tickets" element={<TicketsPage />} />
         <Route path="/tickets/new" element={<TicketCreatePage />} />
         <Route path="/tickets/:id" element={<TicketDetailPage />} />
-        <Route path="/reports" element={<ReportsPage />} />
+        <Route path="/reports" element={<RoleGate roles={['super_admin', 'admin', 'support_agent']}><ReportsPage /></RoleGate>} />
         <Route path="/about-company" element={<AboutCompanyPage />} />
         <Route path="/notifications" element={<NotificationsPage />} />
         <Route path="/profile" element={<ProfilePage />} />

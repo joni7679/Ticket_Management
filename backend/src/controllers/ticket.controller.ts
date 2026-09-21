@@ -8,7 +8,7 @@ import { createNotification } from '../services/notification.service.js';
 import { logAudit } from '../services/audit.service.js';
 import { addTicketReply, createTicketWithWorkflow } from '../services/ticket.service.js';
 import { sendTicketWhatsAppAlert } from '../services/whatsapp.service.js';
-import { isValidImageType, isValidDocumentType } from '../middleware/upload.js';
+import { isValidImageType } from '../middleware/upload.js';
 
 function buildAttachments(files: Express.Multer.File[] | undefined) {
   return (files ?? []).map((file) => {
@@ -107,10 +107,9 @@ export const getTicket = asyncHandler(async (req: Request, res: Response) => {
   const ticketAssignedId = ticket.assignedAgentId && (ticket.assignedAgentId as any)._id ? String((ticket.assignedAgentId as any)._id) : String(ticket.assignedAgentId);
   const isCreator = String(req.user?._id) === ticketCreatorId;
   const isAssigned = String(req.user?._id) === ticketAssignedId;
-  const isAdmin = ['admin', 'super_admin'].includes(req.user?.roleKey || '');
-  const isAgent = req.user?.roleKey === 'support_agent';
 
   // Users can only view tickets they created or are assigned to
+  // Agents, admins and super admins can view any ticket
   if (req.user?.roleKey === 'user' && !isCreator && !isAssigned) {
     throw new ApiError(403, 'You do not have permission to view this ticket');
   }
@@ -124,9 +123,21 @@ export const getTicket = asyncHandler(async (req: Request, res: Response) => {
 });
 
 export const updateTicket = asyncHandler(async (req: Request, res: Response) => {
-  const ticket = await Ticket.findById(req.params.id);
+  const ticket = await Ticket.findById(req.params.id).populate('createdBy assignedAgentId');
   if (!ticket || ticket.isDeleted) {
     throw new ApiError(404, 'Ticket not found');
+  }
+
+  const ticketCreatorId = String(ticket.createdBy?._id ?? ticket.createdBy);
+  const ticketAssignedId = ticket.assignedAgentId ? String(ticket.assignedAgentId._id ?? ticket.assignedAgentId) : null;
+  const isCreator = String(req.user?._id) === ticketCreatorId;
+  const isAssigned = ticketAssignedId ? String(req.user?._id) === ticketAssignedId : false;
+  const isAdmin = ['admin', 'super_admin'].includes(req.user?.roleKey || '');
+  const isAgent = req.user?.roleKey === 'support_agent';
+
+  // Only creator, assigned agent, admin, or support agent can update
+  if (!isCreator && !isAssigned && !isAdmin && !isAgent) {
+    throw new ApiError(403, 'You do not have permission to update this ticket');
   }
 
   const previousStatus = ticket.status;
@@ -140,7 +151,7 @@ export const updateTicket = asyncHandler(async (req: Request, res: Response) => 
     await ticket.save();
 
     await createNotification({
-      userId: String(ticket.createdBy),
+      userId: ticketCreatorId,
       type: 'ticket_pending_user_approval',
       title: `Ticket ${ticket.ticketId} resolved — pending your approval`,
       body: `Ticket has been marked resolved. Please review and approve or reject.`,
@@ -162,7 +173,7 @@ export const updateTicket = asyncHandler(async (req: Request, res: Response) => 
 
   if (req.body.status === 'closed' && previousStatus !== 'closed') {
     await createNotification({
-      userId: String(ticket.createdBy),
+      userId: ticketCreatorId,
       type: 'ticket_resolved',
       title: `Ticket ${ticket.ticketId} updated`,
       body: `Status changed to ${req.body.status}`,
@@ -189,9 +200,17 @@ export const updateTicket = asyncHandler(async (req: Request, res: Response) => 
 });
 
 export const assignTicket = asyncHandler(async (req: Request, res: Response) => {
-  const ticket = await Ticket.findById(req.params.id);
+  const ticket = await Ticket.findById(req.params.id).populate('createdBy assignedAgentId');
   if (!ticket || ticket.isDeleted) {
     throw new ApiError(404, 'Ticket not found');
+  }
+
+  const isAdmin = ['admin', 'super_admin'].includes(req.user?.roleKey || '');
+  const isAgent = req.user?.roleKey === 'support_agent';
+
+  // Only admins, super admins, and support agents can assign tickets
+  if (!isAdmin && !isAgent) {
+    throw new ApiError(403, 'You do not have permission to assign tickets');
   }
 
   const assignee = await User.findById(req.body.assignedAgentId);
@@ -213,9 +232,21 @@ export const assignTicket = asyncHandler(async (req: Request, res: Response) => 
 });
 
 export const changeTicketStatus = asyncHandler(async (req: Request, res: Response) => {
-  const ticket = await Ticket.findById(req.params.id);
+  const ticket = await Ticket.findById(req.params.id).populate('createdBy assignedAgentId');
   if (!ticket || ticket.isDeleted) {
     throw new ApiError(404, 'Ticket not found');
+  }
+
+  const ticketCreatorId = String(ticket.createdBy?._id ?? ticket.createdBy);
+  const ticketAssignedId = ticket.assignedAgentId ? String(ticket.assignedAgentId._id ?? ticket.assignedAgentId) : null;
+  const isCreator = String(req.user?._id) === ticketCreatorId;
+  const isAssigned = ticketAssignedId ? String(req.user?._id) === ticketAssignedId : false;
+  const isAdmin = ['admin', 'super_admin'].includes(req.user?.roleKey || '');
+  const isAgent = req.user?.roleKey === 'support_agent';
+
+  // Only creator, assigned agent, admin, or support agent can change status
+  if (!isCreator && !isAssigned && !isAdmin && !isAgent) {
+    throw new ApiError(403, 'You do not have permission to change ticket status');
   }
 
   const previousStatus = ticket.status;
@@ -226,7 +257,7 @@ export const changeTicketStatus = asyncHandler(async (req: Request, res: Respons
     await ticket.save();
 
     await createNotification({
-      userId: String(ticket.createdBy),
+      userId: ticketCreatorId,
       type: 'ticket_pending_user_approval',
       title: `Ticket ${ticket.ticketId} resolved — pending your approval`,
       body: `Ticket has been marked resolved. Please review and approve or reject.`,
@@ -242,12 +273,12 @@ export const changeTicketStatus = asyncHandler(async (req: Request, res: Respons
   if (req.body.status === 'closed') {
     ticket.closedAt = new Date();
     // Notify ticket creator
-    await createNotification({ userId: String(ticket.createdBy), type: 'ticket_resolved', title: `Ticket ${ticket.ticketId} updated`, body: `Status changed to ${req.body.status}`, ticketId: ticket._id.toString() });
+    await createNotification({ userId: ticketCreatorId, type: 'ticket_resolved', title: `Ticket ${ticket.ticketId} updated`, body: `Status changed to ${req.body.status}`, ticketId: ticket._id.toString() });
     // Notify admins about high-priority resolved tickets
     if (['high', 'urgent'].includes(ticket.priority)) {
       const admins = await User.find({ roleKey: { $in: ['admin', 'super_admin'] } });
       for (const admin of admins) {
-        if (String(admin._id) !== String(ticket.createdBy)) {
+        if (String(admin._id) !== ticketCreatorId) {
           await createNotification({ userId: String(admin._id), type: 'ticket_resolved', title: `High-priority ticket ${ticket.ticketId} ${req.body.status}`, body: ticket.subject, ticketId: ticket._id.toString() });
         }
       }
@@ -358,10 +389,9 @@ export const replyToTicket = asyncHandler(async (req: Request, res: Response) =>
   // Check permissions - allow creator, assigned agent, or admin/super_admin
   const isCreator = ticket.createdBy && (ticket.createdBy as any)._id ? String((ticket.createdBy as any)._id) === String(req.user?._id) : String(ticket.createdBy) === String(req.user?._id);
   const isAssigned = ticket.assignedAgentId && (ticket.assignedAgentId as any)._id ? String((ticket.assignedAgentId as any)._id) === String(req.user?._id) : String(ticket.assignedAgentId) === String(req.user?._id);
-  const isAdmin = ['admin', 'super_admin'].includes(req.user?.roleKey || '');
-  const isAgent = req.user?.roleKey === 'support_agent';
 
   // Users can only reply to tickets they created or are assigned to
+  // Agents, admins and super admins can reply to any ticket
   if (req.user?.roleKey === 'user' && !isCreator && !isAssigned) {
     throw new ApiError(403, 'You do not have permission to reply to this ticket');
   }

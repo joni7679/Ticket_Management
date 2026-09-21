@@ -17,8 +17,12 @@ export function ForgotPasswordPage() {
   const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<ForgotValues>({ resolver: zodResolver(schema) });
 
   const onSubmit = async (values: ForgotValues) => {
-    await forgotPasswordRequest(values);
-    toast.success('If the account exists, reset instructions were sent.');
+    try {
+      await forgotPasswordRequest(values);
+      toast.success('If the account exists, reset instructions were sent.');
+    } catch (error: any) {
+      toast.error(error?.response?.data?.message || 'Failed to send reset link');
+    }
   };
 
   return (

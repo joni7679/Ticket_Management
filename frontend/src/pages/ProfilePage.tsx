@@ -101,17 +101,25 @@ export function ProfilePage() {
   }, [isProfileModalOpen]);
 
   const onProfileSubmit = async (values: z.infer<typeof profileSchema>) => {
-    const response = await updateProfileRequest(values);
-    dispatch(setUser(response.user));
-    resetProfile({ fullName: response.user.fullName, email: response.user.email, phoneNumber: response.user.phoneNumber ?? '', companyName: response.user.companyName ?? '' });
-    toast.success('Profile updated');
-    closeProfileModal();
+    try {
+      const response = await updateProfileRequest(values);
+      dispatch(setUser(response.user));
+      resetProfile({ fullName: response.user.fullName, email: response.user.email, phoneNumber: response.user.phoneNumber ?? '', companyName: response.user.companyName ?? '' });
+      toast.success('Profile updated');
+      closeProfileModal();
+    } catch (error: any) {
+      toast.error(error?.response?.data?.message || 'Failed to update profile');
+    }
   };
 
   const onPasswordSubmit = async (values: z.infer<typeof passwordSchema>) => {
-    await changePasswordRequest({ currentPassword: values.currentPassword, newPassword: values.newPassword });
-    toast.success('Password changed');
-    resetPassword();
+    try {
+      await changePasswordRequest({ currentPassword: values.currentPassword, newPassword: values.newPassword });
+      toast.success('Password changed');
+      resetPassword();
+    } catch (error: any) {
+      toast.error(error?.response?.data?.message || 'Failed to change password');
+    }
   };
 
   return (

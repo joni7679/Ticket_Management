@@ -5,16 +5,16 @@ import { User, type IUserDocument } from '../models/User.js';
 import { asyncHandler } from '../utils/async-handler.js';
 import { ApiError } from '../utils/api-error.js';
 import { clearAuthCookies, setAuthCookies } from '../utils/cookie.js';
-import { hashToken, hashValue } from '../utils/crypto.js';
+import { hashToken, hashValue, createRandomToken } from '../utils/crypto.js';
 import { sendEmail } from '../services/email.service.js';
 import {
   clearRefreshToken,
   createPasswordResetToken,
   createUserWithRole,
   issueTokens,
-  resolveRolePermissions,
   storeRefreshToken
 } from '../services/auth.service.js';
+import { verifyRefreshToken } from '../utils/jwt.js';
 
 function sanitizeUser(user: any) {
   const plain = user?.toObject ? user.toObject() : user;
@@ -86,6 +86,14 @@ export const refresh = asyncHandler(async (req: Request, res: Response) => {
     throw new ApiError(401, 'Invalid refresh session');
   }
 
+  // Verify refresh token payload to check expiration
+  // (DB lookup above already confirmed the session; verify() enforces expiry/signature)
+  try {
+    verifyRefreshToken(refreshToken);
+  } catch {
+    throw new ApiError(401, 'Invalid or expired refresh token');
+  }
+
   const { accessToken, refreshToken: nextRefreshToken } = await issueTokens(user);
   await storeRefreshToken(String(user._id), nextRefreshToken);
   setAuthCookies(res, accessToken, nextRefreshToken);
@@ -146,6 +154,52 @@ export const changePassword = asyncHandler(async (req: Request, res: Response) =
   }
 
   user.passwordHash = await hashValue(req.body.newPassword);
+  user.refreshTokenHash = '';
   await user.save();
   res.json({ message: 'Password changed successfully' });
+});
+
+export const verifyEmail = asyncHandler(async (req: Request, res: Response) => {
+  const { token } = req.body;
+  if (!token) {
+    throw new ApiError(400, 'Verification token required');
+  }
+
+  const tokenHash = hashToken(token);
+  const user = await User.findOne({
+    emailVerificationToken: tokenHash,
+    emailVerificationExpiresAt: { $gt: new Date() }
+  });
+
+  if (!user) {
+    throw new ApiError(400, 'Invalid or expired verification token');
+  }
+
+  user.isVerified = true;
+  user.emailVerificationToken = '';
+  user.emailVerificationExpiresAt = undefined;
+  await user.save();
+
+  res.json({ message: 'Email verified successfully' });
+});
+
+export const resendVerification = asyncHandler(async (req: Request, res: Response) => {
+  const user = await User.findById(req.user?._id) as IUserDocument | null;
+  if (!user) {
+    throw new ApiError(404, 'User not found');
+  }
+
+  if (user.isVerified) {
+    res.json({ message: 'Already verified' });
+    return;
+  }
+
+  const verificationToken = createRandomToken();
+  user.emailVerificationToken = hashToken(verificationToken);
+  user.emailVerificationExpiresAt = new Date(Date.now() + 60 * 60 * 1000);
+  await user.save();
+
+  const verifyLink = `${env.FRONTEND_URL}/verify-email?token=${verificationToken}`;
+  await sendEmail(user.email, 'Verify your email', `<p>Verify your email using this link:</p><p><a href="${verifyLink}">${verifyLink}</a></p>`);
+  res.json({ message: 'Verification email sent' });
 });

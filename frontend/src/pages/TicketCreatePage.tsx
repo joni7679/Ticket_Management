@@ -53,15 +53,19 @@ export function TicketCreatePage() {
   }, []);
 
   const onSubmit = async (values: CreateTicketValues) => {
-    const formData = new FormData();
-    Object.entries(values).forEach(([key, value]) => formData.append(key, String(value)));
-    const fileInput = document.getElementById('ticket-attachments') as HTMLInputElement | null;
-    if (fileInput?.files) {
-      Array.from(fileInput.files).forEach((file) => formData.append('attachments', file));
+    try {
+      const formData = new FormData();
+      Object.entries(values).forEach(([key, value]) => formData.append(key, String(value)));
+      const fileInput = document.getElementById('ticket-attachments') as HTMLInputElement | null;
+      if (fileInput?.files) {
+        Array.from(fileInput.files).forEach((file) => formData.append('attachments', file));
+      }
+      const response = await createTicket(formData);
+      toast.success('Ticket created');
+      navigate(`/tickets/${response.ticket._id}`);
+    } catch (error: any) {
+      toast.error(error?.response?.data?.message || 'Failed to create ticket');
     }
-    const response = await createTicket(formData);
-    toast.success('Ticket created');
-    navigate(`/tickets/${response.ticket._id}`);
   };
 
   return (

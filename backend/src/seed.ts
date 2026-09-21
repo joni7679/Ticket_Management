@@ -80,7 +80,7 @@ async function seed() {
     departmentId: support[0]?._id
   });
 
-  console.log(`Seed complete for ${env.MONGODB_URI}`);
+  console.log('Seed complete');
 }
 
 void seed();

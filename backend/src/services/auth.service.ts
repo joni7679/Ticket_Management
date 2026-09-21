@@ -10,6 +10,8 @@ export async function resolveRolePermissions(roleKey: string) {
   return role?.permissions ?? [];
 }
 
+const VALID_ROLE_KEYS = [ROLE_KEYS.SUPER_ADMIN, ROLE_KEYS.ADMIN, ROLE_KEYS.SUPPORT_AGENT, ROLE_KEYS.USER];
+
 export async function createUserWithRole(input: {
   fullName: string;
   companyName?: string;
@@ -24,7 +26,10 @@ export async function createUserWithRole(input: {
     throw new ApiError(409, 'Email already in use');
   }
 
-  const roleKey = input.roleKey ?? ROLE_KEYS.USER;
+  const roleKey = (input.roleKey ?? ROLE_KEYS.USER) as string;
+  if (!VALID_ROLE_KEYS.includes(roleKey as any)) {
+    throw new ApiError(400, 'Invalid role');
+  }
   const permissions = await resolveRolePermissions(roleKey);
   const passwordHash = await hashValue(input.password);
 

@@ -40,3 +40,20 @@ export async function updateProfileRequest(payload: { fullName: string; email: s
   const response = await api.patch('/api/users/me', payload);
   return response.data;
 }
+
+export async function verifyEmailRequest(payload: { token: string }) {
+  const response = await api.post('/api/auth/verify-email', payload);
+  return response.data;
+}
+
+export async function resendVerificationRequest() {
+  const response = await api.post('/api/auth/resend-verification');
+  return response.data;
+}
+
+export async function updateAvatarRequest(formData: FormData) {
+  const response = await api.patch('/api/users/me/avatar', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  });
+  return response.data;
+}

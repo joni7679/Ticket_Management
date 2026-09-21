@@ -2,13 +2,14 @@ import { Department } from '../models/Department.js';
 import { Ticket } from '../models/Ticket.js';
 import { TicketReply } from '../models/TicketReply.js';
 import { User } from '../models/User.js';
+import { Types } from 'mongoose';
 import { ApiError } from '../utils/api-error.js';
 import { createNotification } from './notification.service.js';
 import { sendTicketWhatsAppAlert } from './whatsapp.service.js';
 
 export function generateTicketId() {
-  const random = Math.random().toString(36).slice(2, 7).toUpperCase();
-  return `TCK-${Date.now().toString().slice(-6)}-${random}`;
+  const uniquePart = crypto.randomUUID().replace(/-/g, '').slice(0, 6).toUpperCase();
+  return `TCK-${Date.now().toString().slice(-6)}-${uniquePart}`;
 }
 
 export async function calculateSlaDueAt(departmentId: string, priority: string) {
@@ -22,13 +23,27 @@ export async function calculateSlaDueAt(departmentId: string, priority: string) 
 }
 
 export async function autoAssignAgent(departmentId: string) {
-  const agent = await User.findOne({ roleKey: 'support_agent', departmentId, status: 'active' }).sort({ createdAt: 1 });
-  if (agent) {
-    return agent._id.toString();
-  }
+  // Least-loaded assignment: prefer the active agent with fewest open tickets.
+  const matchStage = (deptId?: string) => ({
+    roleKey: 'support_agent',
+    status: 'active',
+    ...(deptId ? { departmentId: new Types.ObjectId(deptId) } : {})
+  });
 
-  const fallback = await User.findOne({ roleKey: 'support_agent', status: 'active' }).sort({ createdAt: 1 });
-  return fallback?._id.toString();
+  for (const scope of [departmentId, undefined]) {
+    const agents = await User.find(matchStage(scope)).select('_id').lean();
+    if (agents.length === 0) continue;
+    const agentIds = agents.map((a) => a._id);
+    const load = await Ticket.aggregate([
+      { $match: { assignedAgentId: { $in: agentIds }, status: { $nin: ['closed', 'resolved'] }, isDeleted: { $ne: true } } },
+      { $group: { _id: '$assignedAgentId', count: { $sum: 1 } } }
+    ]);
+    const loadMap = new Map(load.map((row) => [String(row._id), row.count as number]));
+    agents.sort((a, b) => (loadMap.get(String(a._id)) ?? 0) - (loadMap.get(String(b._id)) ?? 0));
+    const chosen = agents[0];
+    if (chosen) return String(chosen._id);
+  }
+  return undefined;
 }
 
 export async function createTicketWithWorkflow(input: {

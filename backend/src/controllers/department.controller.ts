@@ -11,6 +11,8 @@ function slugify(value: string) {
     .replace(/^-+|-+$/g, '');
 }
 
+const ALLOWED_DEPARTMENT_UPDATE_FIELDS = ['name', 'description', 'slug'];
+
 export const listDepartments = asyncHandler(async (_req: Request, res: Response) => {
   const departments = await Department.find().sort({ createdAt: -1 });
   res.json({ items: departments });
@@ -26,10 +28,22 @@ export const createDepartment = asyncHandler(async (req: Request, res: Response)
 });
 
 export const updateDepartment = asyncHandler(async (req: Request, res: Response) => {
-  const department = await Department.findByIdAndUpdate(req.params.id, req.body, { new: true });
+  const department = await Department.findById(req.params.id);
   if (!department) {
     throw new ApiError(404, 'Department not found');
   }
+
+  const updateData: Record<string, unknown> = {};
+  for (const field of ALLOWED_DEPARTMENT_UPDATE_FIELDS) {
+    if (req.body[field] !== undefined) {
+      updateData[field] = req.body[field];
+    }
+  }
+  if (Object.keys(updateData).length > 0) {
+    Object.assign(department, updateData);
+    await department.save();
+  }
+
   await logAudit({ actorId: req.user?._id.toString(), action: 'update_department', entityType: 'Department', entityId: department._id.toString(), after: department, ip: req.ip, userAgent: req.get('user-agent') ?? '' });
   res.json({ department });
 });

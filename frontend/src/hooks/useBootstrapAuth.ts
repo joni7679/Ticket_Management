@@ -1,12 +1,16 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { api } from '../services/api';
 import { setCredentials, clearCredentials, setInitialized } from '../store/authSlice';
 import { useAppDispatch } from './useAppDispatch';
 
 export function useBootstrapAuth() {
   const dispatch = useAppDispatch();
+  const hasRun = useRef(false);
 
   useEffect(() => {
+    if (hasRun.current) return;
+    hasRun.current = true;
+
     let mounted = true;
     const bootstrap = async () => {
       try {

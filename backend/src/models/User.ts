@@ -15,6 +15,9 @@ const userSchema = new Schema(
     departmentId: { type: Schema.Types.ObjectId, ref: 'Department' },
     status: { type: String, enum: ['active', 'disabled'], default: 'active' },
     avatarUrl: { type: String, default: '' },
+    isVerified: { type: Boolean, default: false },
+    emailVerificationToken: { type: String, default: '' },
+    emailVerificationExpiresAt: { type: Date },
     lastLoginAt: { type: Date },
     refreshTokenHash: { type: String, default: '' },
     passwordResetTokenHash: { type: String, default: '' },
@@ -29,6 +32,8 @@ userSchema.set('toJSON', {
     delete safeRet.passwordHash;
     delete safeRet.refreshTokenHash;
     delete safeRet.passwordResetTokenHash;
+    delete safeRet.emailVerificationToken;
+    delete safeRet.emailVerificationExpiresAt;
     return safeRet;
   }
 });

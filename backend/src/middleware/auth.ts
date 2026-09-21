@@ -35,13 +35,9 @@ export async function protect(req: Request, _res: Response, next: NextFunction) 
         const { Role } = await import('../models/Role.js');
         const role = await Role.findOne({ key: user.roleKey });
         if (role && role.permissions) {
-          // Do not persist to DB automatically; just expose on the request user object
-          // so permission checks work for the current request.
-          // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-          // @ts-ignore
           user.permissions = role.permissions;
         }
-      } catch (err) {
+      } catch {
         // swallow - permission checks will continue with whatever is present on user
       }
     }

@@ -1,5 +1,4 @@
 import type { Request, Response, NextFunction } from 'express';
-import { ApiError } from '../utils/api-error.js';
 
 /**
  * Middleware to handle multer upload errors

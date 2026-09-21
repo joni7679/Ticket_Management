@@ -3,6 +3,7 @@ import React from 'react';
 type AplosLogoProps = {
   size?: 'sm' | 'md' | 'lg';
   showTagline?: boolean;
+  showBackground?: boolean;
   taglineColor?: string;
   className?: string;
   align?: 'center' | 'start';
@@ -11,6 +12,7 @@ type AplosLogoProps = {
 export default function AplosLogo({
   size = 'md',
   showTagline = true,
+  showBackground = true,
   taglineColor = '#fff',
   className,
   align = 'center'
@@ -39,7 +41,7 @@ export default function AplosLogo({
       flexDirection: 'column',
       alignItems: align,
       textAlign: align,
-      backgroundColor: '#0f172a',
+      backgroundColor: showBackground ? '#0f172a' : 'transparent',
       padding: '12px 16px',
       borderRadius: '8px'
     },

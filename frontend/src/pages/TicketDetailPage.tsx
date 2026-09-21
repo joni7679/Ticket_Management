@@ -696,6 +696,11 @@ export function TicketDetailPage() {
     scrollToBottom();
   }, [replies]);
 
+  const isChatClosed = ["resolved", "closed"].includes(ticket.status);
+  const canAssignTickets =
+    currentUser?.permissions?.includes("ticket:assign") ||
+    currentUser?.roleKey === "super_admin";
+
   const onSubmit = async (values: ReplyValues) => {
     if (!id) {
       toast.error("Ticket ID not found");
@@ -807,15 +812,10 @@ export function TicketDetailPage() {
       side: isCurrentUserCreator ? "right" : "left",
       label: isCurrentUserCreator ? "You" : "Ticket Creator",
     },
-    ...replies.map((reply) => {
-      const replyAuthor =
-        reply.authorId && typeof reply.authorId === "object"
-          ? reply.authorId
-          : null;
-      const isOwn = String(currentUser?._id) === String(replyAuthor?._id);
-      const isAgent = ["support_agent", "admin", "super_admin"].includes(
-        replyAuthor?.roleKey,
-      );
+    ...replies.map((reply: any) => {
+      const replyAuthor = reply.authorId && typeof reply.authorId === "object" ? reply.authorId : null;
+      const isOwn = replyAuthor ? String(currentUser?._id) === String(replyAuthor._id) : false;
+      const isAgent = replyAuthor ? ["support_agent", "admin", "super_admin"].includes(replyAuthor.roleKey) : false;
 
       return {
         id: reply._id,
@@ -832,10 +832,6 @@ export function TicketDetailPage() {
       };
     }),
   ];
-  const isChatClosed = ["resolved", "closed"].includes(ticket.status);
-  const canAssignTickets =
-    currentUser?.permissions?.includes("ticket:assign") ||
-    currentUser?.roleKey === "super_admin";
 
   const detailsPanelContent = (
     <div className="space-y-5 text-sm">

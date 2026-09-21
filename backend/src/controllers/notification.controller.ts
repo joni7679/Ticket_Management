@@ -13,8 +13,12 @@ export const listNotifications = asyncHandler(async (req: Request, res: Response
 });
 
 export const markRead = asyncHandler(async (req: Request, res: Response) => {
-  const notification = await markNotificationAsRead(String(req.params.id));
-  res.json({ notification });
+  const notification = await Notification.findOne({ _id: req.params.id, userId: req.user?._id });
+  if (!notification) {
+    throw new ApiError(404, 'Notification not found');
+  }
+  const updated = await markNotificationAsRead(String(notification._id));
+  res.json({ notification: updated });
 });
 
 export const deleteNotification = asyncHandler(async (req: Request, res: Response) => {

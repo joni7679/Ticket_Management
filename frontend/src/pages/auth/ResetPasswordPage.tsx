@@ -1,4 +1,4 @@
-import { useSearchParams, Link } from 'react-router-dom';
+import { useSearchParams, Link, useNavigate } from 'react-router-dom';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
@@ -18,11 +18,17 @@ type ResetValues = z.infer<typeof schema>;
 export function ResetPasswordPage() {
   const [params] = useSearchParams();
   const token = params.get('token') ?? '';
+  const navigate = useNavigate();
   const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<ResetValues>({ resolver: zodResolver(schema) });
 
   const onSubmit = async (values: ResetValues) => {
-    await resetPasswordRequest({ token, password: values.password });
-    toast.success('Password reset complete');
+    try {
+      await resetPasswordRequest({ token, password: values.password });
+      toast.success('Password reset complete');
+      navigate('/login');
+    } catch (error: any) {
+      toast.error(error?.response?.data?.message || 'Failed to reset password');
+    }
   };
 
   return (
