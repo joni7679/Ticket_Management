@@ -25,6 +25,34 @@ export function ReportsPage() {
   const currentUser = useAppSelector((state) => state.auth.user);
   const [report, setReport] = useState<any>(null);
   const [departments, setDepartments] = useState<Array<{ _id: string; name: string }>>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  const load = async () => {
+    setIsLoading(true);
+    setLoadError(null);
+    try {
+      const [nextReport, nextDepartments] = await Promise.all([
+        getReportSummary(),
+        listDepartments().catch(() => [])
+      ]);
+      setReport(nextReport);
+      setDepartments(nextDepartments);
+    } catch (error: any) {
+      setLoadError(error?.response?.data?.message || 'Failed to load reports');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    // Don't burn API calls for users who can't view this page.
+    if (currentUser && !['admin', 'support_agent', 'super_admin'].includes(currentUser.roleKey)) {
+      setIsLoading(false);
+      return;
+    }
+    void load();
+  }, []);
 
   // Only admins and super admins can access reports
   if (currentUser && !['admin', 'support_agent', 'super_admin'].includes(currentUser.roleKey)) {
@@ -42,16 +70,6 @@ export function ReportsPage() {
       </div>
     );
   }
-
-  useEffect(() => {
-    void Promise.all([
-      getReportSummary(),
-      listDepartments().catch(() => [])
-    ]).then(([nextReport, nextDepartments]) => {
-      setReport(nextReport);
-      setDepartments(nextDepartments);
-    });
-  }, []);
 
   const departmentNameById = useMemo(() => {
     return new Map(departments.map((department) => [department._id, department.name]));
@@ -114,6 +132,17 @@ export function ReportsPage() {
           </>
         }
       />
+      {isLoading ? (
+        <Card><CardContent className="py-12 text-center text-sm text-slate-500">Loading reports...</CardContent></Card>
+      ) : loadError ? (
+        <Card>
+          <CardContent className="py-12 text-center">
+            <p className="text-sm font-semibold text-slate-900 dark:text-white">{loadError}</p>
+            <Button className="mt-4" onClick={() => void load()}>Retry</Button>
+          </CardContent>
+        </Card>
+      ) : (
+      <>
       <div className="grid gap-3 md:grid-cols-4">
         <Card><CardContent><p className="text-sm text-slate-500">Total Tickets</p><p className="text-3xl font-bold">{report?.summary?.totalTickets ?? 0}</p></CardContent></Card>
         <Card><CardContent><p className="text-sm text-slate-500">Open Tickets</p><p className="text-3xl font-bold">{report?.summary?.openTickets ?? 0}</p></CardContent></Card>
@@ -153,6 +182,8 @@ export function ReportsPage() {
           </CardContent>
         </Card>
       </div>
+      </>
+      )}
     </div>
   );
 }

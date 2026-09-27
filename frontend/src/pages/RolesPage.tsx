@@ -26,18 +26,30 @@ export function RolesPage() {
   const [permissions, setPermissions] = useState<any[]>([]);
   const [selectedPermissions, setSelectedPermissions] = useState<string[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const { register, handleSubmit, reset, setValue, formState: { isSubmitting } } = useForm<RoleFormValues>({ resolver: zodResolver(schema) });
 
   const loadPermissions = async () => {
     try {
       const res = await api.get('/api/permissions');
       setPermissions(res.data.items ?? []);
-    } catch (error) {
+    } catch {
       console.error('Failed to load permissions');
     }
   };
 
-  const load = async () => setRoles(await listRoles());
+  const load = async () => {
+    setIsLoading(true);
+    setLoadError(null);
+    try {
+      setRoles(await listRoles());
+    } catch {
+      setLoadError('Failed to load roles');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   useEffect(() => {
     void load();
@@ -60,7 +72,7 @@ export function RolesPage() {
       setSelectedPermissions([]);
       setEditingId(null);
       await load();
-    } catch (error) {
+    } catch {
       toast.error('Failed to save role');
     }
   };
@@ -79,7 +91,7 @@ export function RolesPage() {
       await api.delete(`/api/roles/${roleId}`);
       toast.success('Role deleted');
       await load();
-    } catch (error) {
+    } catch {
       toast.error('Failed to delete role');
     }
   };
@@ -155,7 +167,17 @@ export function RolesPage() {
         </CardContent>
       </Card>
       <div className="grid gap-4 xl:grid-cols-2">
-        {roles.map((role) => (
+        {isLoading ? (
+          <Card><CardContent className="py-8 text-center text-sm text-slate-500">Loading roles...</CardContent></Card>
+        ) : loadError && roles.length === 0 ? (
+          <Card>
+            <CardContent className="py-8 text-center">
+              <p className="text-sm font-semibold">{loadError}</p>
+              <Button className="mt-4" onClick={() => void load()}>Retry</Button>
+            </CardContent>
+          </Card>
+        ) : (
+        roles.map((role) => (
           <Card key={role._id} className={editingId === role._id ? 'ring-2 ring-blue-500' : ''}>
             <CardContent>
               <div className="flex items-center justify-between">
@@ -179,7 +201,8 @@ export function RolesPage() {
               </div>
             </CardContent>
           </Card>
-        ))}
+        ))
+        )}
       </div>
     </div>
   );

@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { PageHeader } from '../components/layout/PageHeader';
 import { Button } from '../components/ui/button';
@@ -10,38 +10,59 @@ import { Table, TableBody, TableCell, TableHead, TableHeaderCell, TableRow } fro
 import { assignTicketToUser, listAssignableUsers, listTickets } from '../services/tickets';
 import { Badge } from '../components/ui/badge';
 import { EmptyState } from '../components/layout/EmptyState';
+import { TableSkeleton } from '../components/layout/LoadingScreen';
 import { useAppSelector } from '../hooks/useAppSelector';
 import { formatDateTime } from '../utils/date';
 
 export function TicketsPage() {
   const currentUser = useAppSelector((state) => state.auth.user);
+  const [searchParams] = useSearchParams();
   const [items, setItems] = useState<any[]>([]);
   const [assignableUsers, setAssignableUsers] = useState<Array<{ _id: string; fullName: string; email: string; roleKey: string }>>([]);
   const [selectedAssignees, setSelectedAssignees] = useState<Record<string, string>>({});
   const [assigningTicketId, setAssigningTicketId] = useState<string | null>(null);
-  const [query, setQuery] = useState('');
+  const [query, setQuery] = useState(() => searchParams.get('q') ?? '');
   const [status, setStatus] = useState('');
   const [priority, setPriority] = useState('');
   const [company, setCompany] = useState('');
   const [line, setLine] = useState('');
   const [ip, setIp] = useState('');
   const [operatorPhone, setOperatorPhone] = useState('');
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const requestIdRef = useRef(0);
 
-  const loadTickets = async () => {
-    const params: Record<string, string | number | undefined> = { q: query, status, priority, limit: 20 };
-    if (company) params.companyName = company;
-    if (line) params.lineOrStation = line;
-    if (ip) params.ip = ip;
-    if (operatorPhone) params.currentOperatorPhoneNumber = operatorPhone;
-    const data = await listTickets(params);
-    setItems(data.items);
-  };
+  const loadTickets = useCallback(async (overrides?: { q?: string }) => {
+    const requestId = ++requestIdRef.current;
+    setIsLoading(true);
+    setLoadError(null);
+    try {
+      const activeQuery = overrides?.q ?? query;
+      const params: Record<string, string | number | undefined> = { q: activeQuery || undefined, status: status || undefined, priority: priority || undefined, limit: 20 };
+      if (company) params.companyName = company;
+      if (line) params.lineOrStation = line;
+      if (ip) params.ip = ip;
+      if (operatorPhone) params.currentOperatorPhoneNumber = operatorPhone;
+      const data = await listTickets(params);
+      // Ignore stale responses when the user types quickly.
+      if (requestIdRef.current !== requestId) return;
+      setItems(data.items ?? []);
+    } catch (error: any) {
+      if (requestIdRef.current !== requestId) return;
+      setLoadError(error?.response?.data?.message || 'Failed to load tickets');
+      toast.error('Failed to load tickets');
+    } finally {
+      if (requestIdRef.current === requestId) {
+        setIsLoading(false);
+      }
+    }
+  }, [query, status, priority, company, line, ip, operatorPhone]);
 
   const loadAssignableUsers = async () => {
     try {
       const users = await listAssignableUsers();
       setAssignableUsers(users);
-    } catch (error) {
+    } catch {
       setAssignableUsers([]);
     }
   };
@@ -49,6 +70,17 @@ export function TicketsPage() {
   useEffect(() => {
     void loadTickets();
   }, []);
+
+  // Pick up Navbar searches (?q=...) without a full reload.
+  // NOTE: no side effects inside the state updater (updaters must be pure
+  // and may run twice in StrictMode) — compare first, then load.
+  const searchQuery = searchParams.get('q') ?? '';
+  useEffect(() => {
+    if (searchQuery !== query) {
+      setQuery(searchQuery);
+      void loadTickets({ q: searchQuery });
+    }
+  }, [searchQuery]);
 
   useEffect(() => {
     const canAssign = currentUser?.permissions?.includes('ticket:assign') || currentUser?.roleKey === 'super_admin';
@@ -113,7 +145,7 @@ export function TicketsPage() {
       <PageHeader
         title="Tickets"
         description={currentUser?.roleKey === 'user' ? 'Your tickets' : 'Search, filter, and manage the full ticket queue.'}
-        // actions={<Link className="inline-flex items-center justify-center rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-slate-800 dark:bg-blue-500 dark:hover:bg-blue-400" to="/tickets/new">Create Ticket</Link>}
+        actions={<Link className="inline-flex items-center justify-center rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-slate-800 dark:bg-blue-500 dark:hover:bg-blue-400" to="/tickets/new">Create Ticket</Link>}
       />
 
       {currentUser?.roleKey !== 'user' ? (
@@ -142,12 +174,20 @@ export function TicketsPage() {
               <option value="high">High</option>
               <option value="urgent">Urgent</option>
             </Select>
-            <Button className="h-11 min-w-[110px]" onClick={() => void loadTickets()}>Search</Button>
+            <Button className="h-11 min-w-[110px]" onClick={() => void loadTickets()} disabled={isLoading}>{isLoading ? 'Searching...' : 'Search'}</Button>
           </CardContent>
         </Card>
       ) : null}
 
-      {items.length === 0 ? (
+      {isLoading ? (
+        <TableSkeleton rows={6} />
+      ) : loadError && items.length === 0 ? (
+        <Card className="p-8 text-center">
+          <p className="text-sm font-semibold text-slate-900 dark:text-white">{loadError}</p>
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Check your connection and try again.</p>
+          <Button className="mt-4" onClick={() => void loadTickets()}>Retry</Button>
+        </Card>
+      ) : items.length === 0 ? (
         <EmptyState title="No tickets found" description="Create a ticket or adjust your filters to see results." actionLabel="Create ticket" onAction={() => window.location.assign('/tickets/new')} />
       ) : (
         <Card className="overflow-hidden border-slate-200 p-0 shadow-sm dark:border-slate-700">

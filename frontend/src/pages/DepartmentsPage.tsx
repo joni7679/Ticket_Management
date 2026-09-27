@@ -7,7 +7,6 @@ import { PageHeader } from '../components/layout/PageHeader';
 import { Card, CardContent } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
-import { Textarea } from '../components/ui/textarea';
 import { listDepartments } from '../services/users';
 import { api } from '../services/api';
 
@@ -19,9 +18,22 @@ const schema = z.object({
 export function DepartmentsPage() {
   const [departments, setDepartments] = useState<any[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const { register, handleSubmit, reset, setValue, formState: { isSubmitting } } = useForm<z.infer<typeof schema>>({ resolver: zodResolver(schema) });
 
-  const load = async () => setDepartments(await listDepartments());
+  const load = async () => {
+    setIsLoading(true);
+    setLoadError(null);
+    try {
+      setDepartments(await listDepartments());
+    } catch {
+      setLoadError('Failed to load departments');
+      toast.error('Failed to load departments');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   useEffect(() => {
     void load();
@@ -39,7 +51,7 @@ export function DepartmentsPage() {
       reset();
       setEditingId(null);
       await load();
-    } catch (error) {
+    } catch {
       toast.error('Failed to save department');
     }
   };
@@ -56,7 +68,7 @@ export function DepartmentsPage() {
       await api.delete(`/api/departments/${deptId}`);
       toast.success('Department deleted');
       await load();
-    } catch (error) {
+    } catch {
       toast.error('Failed to delete department');
     }
   };
@@ -88,7 +100,17 @@ export function DepartmentsPage() {
         </CardContent>
       </Card>
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-        {departments.map((department) => (
+        {isLoading ? (
+          <Card><CardContent className="py-8 text-center text-sm text-slate-500">Loading departments...</CardContent></Card>
+        ) : loadError && departments.length === 0 ? (
+          <Card>
+            <CardContent className="py-8 text-center">
+              <p className="text-sm font-semibold">{loadError}</p>
+              <Button className="mt-4" onClick={() => void load()}>Retry</Button>
+            </CardContent>
+          </Card>
+        ) : (
+        departments.map((department) => (
           <Card key={department._id} className={editingId === department._id ? 'ring-2 ring-blue-500' : ''}>
             <CardContent>
               <h3 className="text-lg font-semibold">{department.name}</h3>
@@ -104,7 +126,8 @@ export function DepartmentsPage() {
               </div>
             </CardContent>
           </Card>
-        ))}
+        ))
+        )}
       </div>
     </div>
   );

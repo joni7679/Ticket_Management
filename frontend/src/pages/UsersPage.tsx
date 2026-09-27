@@ -20,8 +20,10 @@ export function UsersPage() {
   const [statusFilter, setStatusFilter] = useState('');
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
-  const { register, handleSubmit, reset, watch, formState: { errors } } = useForm({
+  const { register, handleSubmit, reset } = useForm({
     defaultValues: {
       fullName: '',
       email: '',
@@ -34,14 +36,23 @@ export function UsersPage() {
   });
 
   const load = async () => {
-    const [nextUsers, nextRoles, nextDepartments] = await Promise.all([
-      listUsers(),
-      listRoles(),
-      api.get('/api/departments').then(res => res.data.items ?? []).catch(() => [])
-    ]);
-    setUsers(nextUsers);
-    setRoles(nextRoles);
-    setDepartments(nextDepartments);
+    setIsLoading(true);
+    setLoadError(null);
+    try {
+      const [nextUsers, nextRoles, nextDepartments] = await Promise.all([
+        listUsers(),
+        listRoles(),
+        api.get('/api/departments').then(res => res.data.items ?? []).catch(() => [])
+      ]);
+      setUsers(nextUsers);
+      setRoles(nextRoles);
+      setDepartments(nextDepartments);
+    } catch (error: any) {
+      setLoadError(error?.response?.data?.message || 'Failed to load users');
+      toast.error('Failed to load users');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -61,7 +72,6 @@ export function UsersPage() {
   );
 
   const activeCount = users.filter((user) => user.status === 'active').length;
-  const disabledCount = users.filter((user) => user.status !== 'active').length;
   const roleCount = new Set(users.map((user) => user.roleKey)).size;
 
   const saveRole = async (userId: string, roleKey: string) => {
@@ -163,6 +173,14 @@ export function UsersPage() {
         </CardContent>
 
         <CardContent className="overflow-x-auto p-0">
+          {isLoading ? (
+            <p className="px-4 py-12 text-center text-sm text-slate-500">Loading users...</p>
+          ) : loadError && users.length === 0 ? (
+            <div className="px-4 py-12 text-center">
+              <p className="text-sm font-semibold text-slate-900 dark:text-white">{loadError}</p>
+              <Button className="mt-4" onClick={() => void load()}>Retry</Button>
+            </div>
+          ) : (
           <Table>
             <TableHead>
               <TableRow className="bg-gradient-to-r from-slate-50 to-slate-100 dark:from-slate-800 dark:to-slate-700 border-b-2 border-slate-200 dark:border-slate-600">
@@ -246,6 +264,7 @@ export function UsersPage() {
               ))}
             </TableBody>
           </Table>
+          )}
         </CardContent>
       </Card>
 

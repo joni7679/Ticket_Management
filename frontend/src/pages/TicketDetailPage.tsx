@@ -4,7 +4,6 @@ import {
   useState,
   type ChangeEvent,
   type KeyboardEvent as ReactKeyboardEvent,
-  type ReactNode,
 } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { format, isToday, isYesterday } from "date-fns";
@@ -19,7 +18,6 @@ import {
   Clock3,
   Download,
   FileText,
-  Image as ImageIcon,
   Info,
   MessageSquare,
   Paperclip,
@@ -41,6 +39,7 @@ import {
 import { Select } from "../components/ui/select";
 import { Textarea } from "../components/ui/textarea";
 import { PageHeader } from "../components/layout/PageHeader";
+import { LoadingScreen } from "../components/layout/LoadingScreen";
 import { api } from "../services/api";
 import { assignTicketToUser, changeTicketStatus, listAssignableUsers, userApproval } from "../services/tickets";
 import { useAppSelector } from "../hooks/useAppSelector";
@@ -464,6 +463,8 @@ export function TicketDetailPage() {
                       <img
                         src={resolveAttachmentUrl(attachment.url)}
                         alt={attachment.name}
+                        loading="lazy"
+                        decoding="async"
                         className="max-h-72 w-full rounded-lg object-contain"
                       />
                     </div>
@@ -618,8 +619,15 @@ export function TicketDetailPage() {
     void loadTicket();
   }, [id]);
 
+  const ticketStatusRef = useRef<string | null>(null);
+  ticketStatusRef.current = ticket?.status ?? null;
+
   const checkForNewReplies = async () => {
     if (!id) return;
+    // Don't burn requests when the tab isn't visible or the chat is locked.
+    if (typeof document !== 'undefined' && document.hidden) return;
+    const status = ticketStatusRef.current;
+    if (status && ['resolved', 'closed'].includes(status)) return;
     try {
       const response = await api.get(`/api/tickets/${id}`);
       const newReplies = response.data.replies ?? [];
@@ -643,12 +651,23 @@ export function TicketDetailPage() {
     }
   };
 
-  // Poll for updates to ticket/replies so both participants see new messages without refresh
+  // Poll for updates so both participants see new messages without refresh.
+  // 12s + visibility/closed-chat guards replace the old 3s unconditional
+  // poll that re-downloaded the full ticket on every tick.
   useEffect(() => {
     const interval = setInterval(() => {
       void checkForNewReplies();
-    }, 3000);
-    return () => clearInterval(interval);
+    }, 12000);
+    const handleVisibility = () => {
+      if (!document.hidden) {
+        void checkForNewReplies();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
   }, [id]);
 
   useEffect(() => {
@@ -696,7 +715,7 @@ export function TicketDetailPage() {
     scrollToBottom();
   }, [replies]);
 
-  const isChatClosed = ["resolved", "closed"].includes(ticket.status);
+  const isChatClosed = ["resolved", "closed"].includes(ticket?.status);
   const canAssignTickets =
     currentUser?.permissions?.includes("ticket:assign") ||
     currentUser?.roleKey === "super_admin";
@@ -757,9 +776,11 @@ export function TicketDetailPage() {
 
   if (loading) {
     return (
-      <div className="rounded-2xl border border-white/60 bg-white/80 p-6 dark:border-slate-800 dark:bg-slate-950/80">
-        Loading ticket...
-      </div>
+      <LoadingScreen
+        variant="inline"
+        message="Loading ticket conversation..."
+        subMessage="Fetching details, replies and attachments"
+      />
     );
   }
 

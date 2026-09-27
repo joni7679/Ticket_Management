@@ -56,5 +56,19 @@ ticketSchema.index({ lineOrStation: 1 });
 ticketSchema.index({ ip: 1 });
 ticketSchema.index({ currentOperatorPhoneNumber: 1 });
 
+// Indexes for the hot query paths (list, reports, assignment, SLA)
+// These match the actual filters/sorts used in controllers and services.
+ticketSchema.index({ isDeleted: 1, status: 1, createdAt: -1 });
+ticketSchema.index({ isDeleted: 1, createdBy: 1, createdAt: -1 });
+ticketSchema.index({ isDeleted: 1, assignedAgentId: 1, status: 1 });
+ticketSchema.index({ isDeleted: 1, departmentId: 1, status: 1 });
+ticketSchema.index({ isDeleted: 1, priority: 1 });
+ticketSchema.index({ isDeleted: 1, slaDueAt: 1, status: 1 });
+ticketSchema.index({ status: 1, createdAt: -1 });
+ticketSchema.index({ lastActivityAt: -1 });
+// Text index powers the `q` search (subject/description/ticketId) without
+// a full collection scan from $or regexes.
+ticketSchema.index({ subject: 'text', description: 'text', ticketId: 'text' });
+
 export type ITicket = InferSchemaType<typeof ticketSchema>;
 export const Ticket = model('Ticket', ticketSchema);

@@ -1,4 +1,5 @@
 import express from 'express';
+import compression from 'compression';
 import cookieParser from 'cookie-parser';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -20,7 +21,8 @@ import { uploadsDir } from './config/uploads.js';
 export const app = express();
 
 app.set('trust proxy', 1); // Trust first proxy (nginx, load balancer, etc.)
-app.disable('etag');
+// Gzip JSON + static payloads: typically 60-80% smaller tickets/reports lists.
+app.use(compression());
 app.use(helmet({
   crossOriginResourcePolicy: { policy: 'cross-origin' }
 }));
@@ -41,7 +43,14 @@ const rateLimitConfig = env.NODE_ENV === 'development'
 app.use(rateLimit(rateLimitConfig));
 
 // Prevent browser/proxy caching for all API responses so GET requests do not revalidate as 304s.
+// Reference data (departments/roles/permissions) changes rarely, so allow a
+// short private cache to avoid refetching it on every page navigation.
+const REFERENCE_CACHE_PATHS = ['/api/departments', '/api/roles', '/api/permissions'];
 app.use('/api', (req, res, next) => {
+  if (req.method === 'GET' && REFERENCE_CACHE_PATHS.some((path) => req.path.startsWith(path.replace('/api', '')) || req.originalUrl.startsWith(path))) {
+    res.setHeader('Cache-Control', 'private, max-age=60, stale-while-revalidate=300');
+    return next();
+  }
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
   res.setHeader('Pragma', 'no-cache');
   res.setHeader('Expires', '0');

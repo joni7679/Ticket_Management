@@ -20,14 +20,29 @@ const authSlice = createSlice({
       state.user = action.payload.user;
       state.initialized = true;
       setAccessToken(action.payload.accessToken);
+      try {
+        window.localStorage.setItem('helpdesk-cached-user', JSON.stringify(action.payload.user));
+      } catch {
+        // ignore storage errors
+      }
     },
     setUser(state, action: PayloadAction<User>) {
       state.user = action.payload;
+      try {
+        window.localStorage.setItem('helpdesk-cached-user', JSON.stringify(action.payload));
+      } catch {
+        // ignore storage errors
+      }
     },
     clearCredentials(state) {
       state.user = null;
       state.initialized = true;
       clearAccessToken();
+      try {
+        window.localStorage.removeItem('helpdesk-cached-user');
+      } catch {
+        // ignore storage errors
+      }
     },
     setInitialized(state, action: PayloadAction<boolean>) {
       state.initialized = action.payload;

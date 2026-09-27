@@ -22,12 +22,14 @@ export function Sidebar({
   role,
   mobile = false,
   collapsed = false,
-  onLogout
+  onLogout,
+  onNavigate
 }: {
   role?: RoleKey;
   mobile?: boolean;
   collapsed?: boolean;
   onLogout?: () => void;
+  onNavigate?: () => void;
 }) {
   const isCompact = collapsed && !mobile;
 
@@ -35,8 +37,8 @@ export function Sidebar({
     <aside
       className={cn(
         'sticky top-0 flex h-screen shrink-0 flex-col border-r border-white/60 bg-white/70 px-3 py-5 backdrop-blur-xl transition-all duration-300 dark:border-slate-800 dark:bg-slate-950/70',
-        isCompact ? 'w-20' : 'w-62',
-        mobile ? 'block lg:hidden' : 'hidden lg:block'
+        isCompact ? 'w-20' : 'w-64',
+        mobile ? 'block w-72 lg:hidden' : 'hidden lg:flex'
       )}
     >
       <div className="mb-5 rounded-2xl border border-slate-200 bg-white/80 p-4 shadow-sm dark:border-slate-800 dark:bg-slate-950/60">
@@ -48,12 +50,13 @@ export function Sidebar({
         />
       </div>
 
-      <nav className={cn('rounded-2xl border border-slate-200 bg-white/70 p-3 shadow-sm dark:border-slate-800 dark:bg-slate-950/60', isCompact && 'p-2')}>
+      <nav className={cn('overflow-y-auto rounded-2xl border border-slate-200 bg-white/70 p-3 shadow-sm dark:border-slate-800 dark:bg-slate-950/60', isCompact && 'p-2')}>
         <div className={cn('space-y-1', isCompact && 'space-y-2')}>
           {navItems.filter((item) => !item.roles || (role && item.roles.includes(role))).map((item) => (
             <NavLink
               key={item.to}
               to={item.to}
+              onClick={onNavigate}
               title={isCompact ? item.label : undefined}
               aria-label={item.label}
               className={({ isActive }) => cn(

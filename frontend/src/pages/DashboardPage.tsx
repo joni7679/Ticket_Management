@@ -14,6 +14,7 @@ import { Badge } from '../components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeaderCell, TableRow } from '../components/ui/table';
 import { StatCard } from '../components/layout/StatCard';
 import { PageHeader } from '../components/layout/PageHeader';
+import { CardSkeleton, TableSkeleton } from '../components/layout/LoadingScreen';
 import { getReportSummary, getMyReportSummary } from '../services/reports';
 import { listTickets } from '../services/tickets';
 import { listDepartments } from '../services/users';
@@ -43,6 +44,7 @@ export function DashboardPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!user) return;
     let mounted = true;
     setLoading(true);
     setError(null);
@@ -50,15 +52,15 @@ export function DashboardPage() {
     async function load() {
       try {
         if (user?.roleKey === 'user') {
-          const [report, departmentsList] = await Promise.all([
+          // One parallel batch instead of two sequential round trips.
+          const [report, departmentsList, tickets] = await Promise.all([
             getMyReportSummary(),
-            listDepartments().catch(() => [])
+            listDepartments().catch(() => []),
+            listTickets({ limit: 20 })
           ]);
           if (!mounted) return;
           setSummary(report);
           setDepartments(departmentsList);
-          const tickets = await listTickets({ limit: 20 });
-          if (!mounted) return;
           setMyTickets(tickets.items ?? []);
         } else {
           const [report, tickets, departmentsList] = await Promise.all([
@@ -130,6 +132,28 @@ export function DashboardPage() {
         actions={<Link className="inline-flex items-center justify-center rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-slate-800 dark:bg-blue-500 dark:hover:bg-blue-400" to="/tickets/new">Raise Ticket</Link>}
       />
 
+      {error ? (
+        <div role="alert" className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-200">
+          {error}
+        </div>
+      ) : null}
+
+      {loading && !summary ? (
+        <>
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <CardSkeleton lines={2} />
+            <CardSkeleton lines={2} />
+            <CardSkeleton lines={2} />
+            <CardSkeleton lines={2} />
+          </div>
+          <div className="grid gap-3 lg:grid-cols-2">
+            <CardSkeleton lines={5} />
+            <CardSkeleton lines={5} />
+          </div>
+          <TableSkeleton rows={5} />
+        </>
+      ) : (
+        <>
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard title={user?.roleKey === 'user' ? 'My Tickets' : 'Total Tickets'} value={summary?.summary?.totalTickets ?? 0} description={user?.roleKey === 'user' ? 'Tickets you created' : 'All active and historical tickets'} />
         <StatCard title="Open Tickets" value={summary?.summary?.openTickets ?? 0} description={user?.roleKey === 'user' ? 'Your open tickets' : 'Needs attention'} />
@@ -265,6 +289,8 @@ export function DashboardPage() {
           )}
         </CardContent>
       </Card>
+        </>
+      )}
     </div>
   );
 }

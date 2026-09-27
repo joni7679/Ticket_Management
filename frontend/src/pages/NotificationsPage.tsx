@@ -8,6 +8,7 @@ import { Button } from '../components/ui/button';
 import { Select } from '../components/ui/select';
 import { listNotifications, markNotificationRead, deleteNotification, markAllNotificationsRead, deleteAllNotifications } from '../services/notifications';
 import { EmptyState } from '../components/layout/EmptyState';
+import { InlineLoader } from '../components/layout/LoadingScreen';
 import { toast } from 'sonner';
 import { formatDateTime } from '../utils/date';
 
@@ -34,8 +35,8 @@ export function NotificationsPage() {
       if (!notification.readAt) {
         await markNotificationRead(notification._id);
       }
-    } catch (err) {
-      // ignore
+    } catch {
+      // ignore - navigation still proceeds
     }
     if (notification.ticketId) {
       navigate(`/tickets/${notification.ticketId}`);
@@ -89,7 +90,7 @@ export function NotificationsPage() {
       await markAllNotificationsRead();
       toast.success('All notifications marked as read');
       await load();
-    } catch (error) {
+    } catch {
       toast.error('Failed to mark all as read');
     }
   };
@@ -100,7 +101,7 @@ export function NotificationsPage() {
       await deleteAllNotifications();
       toast.success('All notifications deleted');
       await load();
-    } catch (error) {
+    } catch {
       toast.error('Failed to delete notifications');
     }
   };
@@ -109,7 +110,7 @@ export function NotificationsPage() {
     try {
       await markNotificationRead(id);
       await load();
-    } catch (error) {
+    } catch {
       toast.error('Failed to mark notification as read');
     }
   };
@@ -119,7 +120,7 @@ export function NotificationsPage() {
       await deleteNotification(id);
       toast.success('Notification deleted');
       await load();
-    } catch (error) {
+    } catch {
       toast.error('Failed to delete notification');
     }
   };
@@ -155,7 +156,9 @@ export function NotificationsPage() {
         </CardContent>
       </Card>
 
-      {filteredItems.length === 0 ? (
+      {loading ? (
+        <InlineLoader message="Loading notifications..." />
+      ) : filteredItems.length === 0 ? (
         <EmptyState
           title={filter === 'all' ? 'No notifications yet' : `No ${filter} notifications`}
           description={filter === 'all' ? 'When you get updates on your tickets, they will appear here.' : `You have no ${filter} notifications.`}

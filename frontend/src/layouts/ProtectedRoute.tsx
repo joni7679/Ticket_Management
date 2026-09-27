@@ -1,12 +1,13 @@
 import { Navigate } from 'react-router-dom';
 import type { ReactElement } from 'react';
 import { useAppSelector } from '../hooks/useAppSelector';
+import { LoadingScreen } from '../components/layout/LoadingScreen';
 
 export function ProtectedRoute({ children }: { children: ReactElement }) {
   const { user, initialized } = useAppSelector((state) => state.auth);
 
   if (!initialized) {
-    return <div className="flex h-screen items-center justify-center text-sm text-slate-500">Loading session...</div>;
+    return <LoadingScreen variant="fullscreen" message="Restoring your session..." subMessage="Verifying credentials and loading workspace" />;
   }
 
   if (!user) {

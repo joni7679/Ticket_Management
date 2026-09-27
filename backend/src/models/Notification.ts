@@ -12,5 +12,8 @@ const notificationSchema = new Schema(
   { timestamps: true }
 );
 
+notificationSchema.index({ userId: 1, createdAt: -1 });
+notificationSchema.index({ userId: 1, readAt: 1, createdAt: -1 });
+
 export type INotification = InferSchemaType<typeof notificationSchema>;
 export const Notification = model('Notification', notificationSchema);

@@ -4,7 +4,7 @@ import { TicketReply } from '../models/TicketReply.js';
 import { User } from '../models/User.js';
 import { Types } from 'mongoose';
 import { ApiError } from '../utils/api-error.js';
-import { createNotification } from './notification.service.js';
+import { createManyNotifications, createNotification } from './notification.service.js';
 import { sendTicketWhatsAppAlert } from './whatsapp.service.js';
 
 export function generateTicketId() {
@@ -94,21 +94,21 @@ export async function createTicketWithWorkflow(input: {
     });
   }
 
-  // Notify admins about high-priority tickets
+  // Notify admins about high-priority tickets (single batched write)
   if (['high', 'urgent'].includes(input.priority)) {
-    const admins = await User.find({ roleKey: { $in: ['admin', 'super_admin'] } });
-    for (const admin of admins) {
-      if (String(admin._id) !== assignedAgentId) {
-        // Don't duplicate notification to assigned agent
-        await createNotification({
-          userId: String(admin._id),
-          type: 'ticket_created',
-          title: `High-priority ticket ${ticket.ticketId} created`,
-          body: ticket.subject,
-          ticketId: ticket._id.toString()
-        });
-      }
-    }
+    const admins = await User.find({ roleKey: { $in: ['admin', 'super_admin'] } }).select('_id').lean();
+    const targets = admins
+      .map((admin) => String(admin._id))
+      .filter((adminId) => adminId !== assignedAgentId);
+    await createManyNotifications(
+      targets.map((userId) => ({
+        userId,
+        type: 'ticket_created',
+        title: `High-priority ticket ${ticket.ticketId} created`,
+        body: ticket.subject,
+        ticketId: ticket._id.toString()
+      }))
+    );
   }
 
   void sendTicketWhatsAppAlert({
@@ -177,22 +177,21 @@ export async function addTicketReply(input: {
       });
     }
 
-    // Notify admins about high-priority ticket replies
+    // Notify admins about high-priority ticket replies (single batched write)
     if (['high', 'urgent'].includes(ticket.priority)) {
-      const admins = await User.find({ roleKey: { $in: ['admin', 'super_admin'] } });
-      for (const admin of admins) {
-        const adminId = String(admin._id);
-        // Don't duplicate: skip if admin is creator, assigned agent, or the author of the reply
-        if (adminId !== creatorId && adminId !== agentId && adminId !== authorId) {
-          await createNotification({
-            userId: adminId,
-            type: 'ticket_reply',
-            title: `High-priority update on ticket ${ticket.ticketId}`,
-            body: replySummary.substring(0, 100),
-            ticketId: ticket._id.toString()
-          });
-        }
-      }
+      const admins = await User.find({ roleKey: { $in: ['admin', 'super_admin'] } }).select('_id').lean();
+      const targets = admins
+        .map((admin) => String(admin._id))
+        .filter((adminId) => adminId !== creatorId && adminId !== agentId && adminId !== authorId);
+      await createManyNotifications(
+        targets.map((userId) => ({
+          userId,
+          type: 'ticket_reply',
+          title: `High-priority update on ticket ${ticket.ticketId}`,
+          body: replySummary.substring(0, 100),
+          ticketId: ticket._id.toString()
+        }))
+      );
     }
   }
 

@@ -31,49 +31,116 @@ export function TicketCreatePage() {
   const navigate = useNavigate();
   const [departments, setDepartments] = useState<Array<{ _id: string; name: string }>>([]);
   const [loading, setLoading] = useState(true);
-  const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<CreateTicketValues>({ resolver: zodResolver(schema), defaultValues: { priority: 'medium' } });
+  const [deptError, setDeptError] = useState<string | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const { register, handleSubmit, setError, formState: { errors, isSubmitting } } = useForm<CreateTicketValues>({ resolver: zodResolver(schema), defaultValues: { priority: 'medium' } });
+
+  const loadDepartments = async () => {
+    setLoading(true);
+    setDeptError(null);
+    try {
+      const response = await api.get('/api/departments');
+      const depts = response.data.items ?? [];
+      setDepartments(depts);
+      if (depts.length === 0) {
+        setDeptError('No departments found. Ask an admin to create one, then retry.');
+      }
+    } catch (error: any) {
+      console.error('Failed to load departments:', error);
+      const message = error?.response?.data?.message || 'Failed to load departments. Check your connection and retry.';
+      setDeptError(message);
+      toast.error('Failed to load departments');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const loadDepartments = async () => {
-      try {
-        const response = await api.get('/api/departments');
-        const depts = response.data.items ?? [];
-        setDepartments(depts);
-        if (depts.length === 0) {
-          console.warn('No departments found');
-        }
-      } catch (error) {
-        console.error('Failed to load departments:', error);
-        toast.error('Failed to load departments');
-      } finally {
-        setLoading(false);
-      }
-    };
     void loadDepartments();
   }, []);
 
   const onSubmit = async (values: CreateTicketValues) => {
+    setSubmitError(null);
     try {
       const formData = new FormData();
       Object.entries(values).forEach(([key, value]) => formData.append(key, String(value)));
       const fileInput = document.getElementById('ticket-attachments') as HTMLInputElement | null;
       if (fileInput?.files) {
-        Array.from(fileInput.files).forEach((file) => formData.append('attachments', file));
+        const files = Array.from(fileInput.files);
+        const oversized = files.filter((file) => file.size > 10 * 1024 * 1024);
+        if (oversized.length > 0) {
+          const message = `${oversized.length} file(s) exceed 10MB: ${oversized.slice(0, 2).map((f) => f.name).join(', ')}`;
+          setSubmitError(message);
+          toast.error(message);
+          return;
+        }
+        if (files.length > 5) {
+          const message = 'Maximum 5 files allowed';
+          setSubmitError(message);
+          toast.error(message);
+          return;
+        }
+        files.forEach((file) => formData.append('attachments', file));
       }
       const response = await createTicket(formData);
-      toast.success('Ticket created');
+      toast.success('Ticket created successfully');
       navigate(`/tickets/${response.ticket._id}`);
     } catch (error: any) {
-      toast.error(error?.response?.data?.message || 'Failed to create ticket');
+      const data = error?.response?.data;
+      // Backend zod errors arrive as { message: 'Validation failed', details: { fieldErrors } } —
+      // surface the per-field reasons instead of the generic message.
+      const fieldErrors = data?.details?.fieldErrors as Record<string, string[]> | undefined;
+      if (fieldErrors && typeof fieldErrors === 'object') {
+        Object.entries(fieldErrors).forEach(([field, messages]) => {
+          const message = Array.isArray(messages) ? messages[0] : String(messages);
+          if (message) {
+            try {
+              setError(field as keyof CreateTicketValues, { type: 'server', message });
+            } catch {
+              // ignore unknown fields
+            }
+          }
+        });
+        const summary = Object.entries(fieldErrors)
+          .slice(0, 3)
+          .map(([field, messages]) => `${field}: ${Array.isArray(messages) ? messages[0] : messages}`)
+          .join('; ');
+        const message = summary ? `Please fix: ${summary}` : 'Validation failed. Please check the form.';
+        setSubmitError(message);
+        toast.error(message);
+        return;
+      }
+      const message = data?.message || 'Failed to create ticket';
+      setSubmitError(message);
+      toast.error(message);
     }
+  };
+
+  // handleSubmit() silently skips onSubmit when client validation fails —
+  // without this, a missed inline message looks like "nothing happens".
+  const onInvalid = (formErrors: Record<string, { message?: string }>) => {
+    const entries = Object.entries(formErrors);
+    if (entries.length === 0) return;
+    const [firstField] = entries[0];
+    const message = `Please fix ${entries.length} highlighted field${entries.length === 1 ? '' : 's'} before submitting`;
+    setSubmitError(message);
+    toast.error(message);
+    requestAnimationFrame(() => {
+      document.querySelector(`[name="${firstField}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
   };
 
   return (
     <div className="space-y-6">
       <PageHeader title="Create ticket" description="Capture the request with enough context to route it correctly." actions={<Button variant="outline" onClick={() => navigate('/tickets')}><ArrowLeft className="mr-2 h-4 w-4" /> Back</Button>} />
+      {submitError ? (
+        <div role="alert" className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-200">
+          {submitError}
+        </div>
+      ) : null}
       <Card>
         <CardContent>
-          <form className="grid gap-4 md:grid-cols-2" onSubmit={handleSubmit(onSubmit)}>
+          <form className="grid gap-4 md:grid-cols-2" onSubmit={handleSubmit(onSubmit, onInvalid)}>
             <div>
               <label className="text-sm font-medium text-slate-700 dark:text-slate-200 mb-1 block">Line / Station</label>
               <Input placeholder="e.g., Main Line A" className={errors.lineOrStation ? 'border-red-300 bg-red-50 dark:border-red-500 dark:bg-red-950/20' : ''} {...register('lineOrStation')} />
@@ -120,7 +187,18 @@ export function TicketCreatePage() {
                   {departments.map((department) => <option key={department._id} value={department._id}>{department.name}</option>)}
                 </Select>
               )}
-              {errors.departmentId ? <p className="mt-1 text-xs text-red-500 font-medium">{errors.departmentId.message}</p> : <p className="mt-1 text-xs text-slate-500">Route to appropriate team</p>}
+              {deptError ? (
+                <p className="mt-1 text-xs font-medium text-red-500">
+                  {deptError}{' '}
+                  <button type="button" onClick={() => void loadDepartments()} className="font-semibold underline hover:text-red-600">
+                    Retry
+                  </button>
+                </p>
+              ) : errors.departmentId ? (
+                <p className="mt-1 text-xs text-red-500 font-medium">{errors.departmentId.message}</p>
+              ) : (
+                <p className="mt-1 text-xs text-slate-500">Route to appropriate team</p>
+              )}
             </div>
             <div>
               <label className="text-sm font-medium text-slate-700 dark:text-slate-200 mb-1 block">Priority</label>
@@ -146,8 +224,13 @@ export function TicketCreatePage() {
               </div>
               <p className="mt-1 text-xs text-slate-500">Images: JPEG, PNG, GIF, WebP | Docs: PDF, Word, Excel, TXT</p>
             </div>
-            <div className="md:col-span-2 flex justify-end">
-              <Button type="submit" disabled={isSubmitting || loading || departments.length === 0}>{isSubmitting ? 'Creating...' : 'Create Ticket'}</Button>
+            <div className="md:col-span-2 flex items-center justify-end gap-3">
+              {deptError && !loading ? (
+                <Button type="button" variant="outline" onClick={() => void loadDepartments()}>
+                  Retry departments
+                </Button>
+              ) : null}
+              <Button type="submit" disabled={isSubmitting || loading} title={departments.length === 0 && !loading ? 'No departments available — retry loading departments first' : undefined}>{isSubmitting ? 'Creating...' : 'Create Ticket'}</Button>
             </div>
           </form>
         </CardContent>

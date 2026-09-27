@@ -18,6 +18,13 @@ export function setAuthCookies(res: Response, accessToken: string, refreshToken:
 }
 
 export function clearAuthCookies(res: Response) {
-  res.clearCookie('accessToken');
-  res.clearCookie('refreshToken');
+  const isProd = env.NODE_ENV === 'production';
+  const opts = {
+    httpOnly: true,
+    secure: isProd,
+    sameSite: (isProd ? 'none' : 'lax') as 'none' | 'lax',
+    path: '/'
+  };
+  res.clearCookie('accessToken', opts);
+  res.clearCookie('refreshToken', opts);
 }

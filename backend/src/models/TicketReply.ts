@@ -21,5 +21,9 @@ const ticketReplySchema = new Schema(
   { timestamps: true }
 );
 
+// Hot path: getTicket loads all replies for one ticket on every poll.
+ticketReplySchema.index({ ticketId: 1, createdAt: 1 });
+ticketReplySchema.index({ authorId: 1, createdAt: -1 });
+
 export type ITicketReply = InferSchemaType<typeof ticketReplySchema>;
 export const TicketReply = model('TicketReply', ticketReplySchema);

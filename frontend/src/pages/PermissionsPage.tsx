@@ -29,13 +29,24 @@ export function PermissionsPage() {
   const [selectedPermissions, setSelectedPermissions] = useState<Set<string>>(new Set());
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const { register, handleSubmit, reset, setValue, formState: { isSubmitting } } = useForm<PermissionFormValues>({ resolver: zodResolver(schema) });
 
   useEffect(() => {
-    loadData();
+    void loadData();
   }, []);
 
+  if (isLoading) {
+    return (
+      <div className="space-y-6">
+        <PageHeader title="Permissions & Roles" description="Manage permissions and assign them to roles for access control." />
+        <Card><CardContent className="py-12 text-center text-sm text-slate-500">Loading permissions...</CardContent></Card>
+      </div>
+    );
+  }
+
   const loadData = async () => {
+    setIsLoading(true);
     try {
       const [permsRes, rolesData] = await Promise.all([
         api.get('/api/permissions'),
@@ -43,8 +54,10 @@ export function PermissionsPage() {
       ]);
       setPermissions(permsRes.data.items ?? []);
       setRoles(rolesData);
-    } catch (error) {
+    } catch {
       toast.error('Failed to load data');
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -61,7 +74,7 @@ export function PermissionsPage() {
       reset();
       setEditingId(null);
       await loadData();
-    } catch (error) {
+    } catch {
       toast.error('Failed to save permission');
     }
   };
@@ -80,7 +93,7 @@ export function PermissionsPage() {
       await api.delete(`/api/permissions/${permissionId}`);
       toast.success('Permission deleted');
       await loadData();
-    } catch (error) {
+    } catch {
       toast.error('Failed to delete permission');
     }
   };

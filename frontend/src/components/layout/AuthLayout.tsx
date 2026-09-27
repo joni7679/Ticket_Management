@@ -9,7 +9,7 @@ interface AuthLayoutProps {
   icon?: string;
 }
 
-export function AuthLayout({ children, eyebrow, title, description, icon = '🚀' }: AuthLayoutProps) {
+export function AuthLayout({ children, eyebrow, title, description }: AuthLayoutProps) {
   return (
     <div className="min-h-screen bg-slate-100 px-4 py-6 text-slate-900 dark:bg-slate-950 dark:text-white sm:px-6 lg:px-8 lg:py-8">
       <div className="mx-auto flex min-h-[calc(100vh-3rem)] w-full max-w-6xl items-center justify-center">

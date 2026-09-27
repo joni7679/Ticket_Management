@@ -4,7 +4,7 @@ import { TicketReply } from '../models/TicketReply.js';
 import { User } from '../models/User.js';
 import { ApiError } from '../utils/api-error.js';
 import { asyncHandler } from '../utils/async-handler.js';
-import { createNotification } from '../services/notification.service.js';
+import { createManyNotifications, createNotification } from '../services/notification.service.js';
 import { logAudit } from '../services/audit.service.js';
 import { addTicketReply, createTicketWithWorkflow } from '../services/ticket.service.js';
 import { sendTicketWhatsAppAlert } from '../services/whatsapp.service.js';
@@ -51,12 +51,24 @@ export const listTickets = asyncHandler(async (req: Request, res: Response) => {
   if (ip) filter.ip = { $regex: ip, $options: 'i' };
   if (currentOperatorPhoneNumber) filter.currentOperatorPhoneNumber = { $regex: currentOperatorPhoneNumber, $options: 'i' };
 
-  const pageNumber = Math.max(Number(page), 1);
-  const pageSize = Math.min(Math.max(Number(limit), 1), 100);
+  const pageNumber = Math.max(Number(page) || 1, 1);
+  const pageSize = Math.min(Math.max(Number(limit) || 10, 1), 100);
   const skip = (pageNumber - 1) * pageSize;
 
+  // Allowlist sorts so Mongo can use an index instead of an in-memory sort.
+  const allowedSorts = new Set(['-createdAt', 'createdAt', '-updatedAt', 'updatedAt', '-priority', '-lastActivityAt']);
+  const sortOption = allowedSorts.has(sort) ? sort : '-createdAt';
+
   const [items, total] = await Promise.all([
-    Ticket.find(filter).sort(sort).skip(skip).limit(pageSize).populate('departmentId assignedAgentId createdBy'),
+    Ticket.find(filter)
+      .select('ticketId companyName lineOrStation ip currentOperatorPhoneNumber subject description category departmentId priority assignedAgentId status slaDueAt createdBy lastActivityAt createdAt updatedAt tags')
+      .sort(sortOption)
+      .skip(skip)
+      .limit(pageSize)
+      .populate('departmentId', 'name slug')
+      .populate('assignedAgentId', 'fullName email roleKey')
+      .populate('createdBy', 'fullName email roleKey companyName')
+      .lean(),
     Ticket.countDocuments(filter)
   ]);
 
@@ -77,7 +89,8 @@ export const listAssignableUsers = asyncHandler(async (req: Request, res: Respon
   const items = await User.find(filter)
     .select('fullName email roleKey departmentId')
     .populate('departmentId', 'name slug')
-    .sort({ fullName: 1 });
+    .sort({ fullName: 1 })
+    .lean();
 
   res.json({ items });
 });
@@ -97,8 +110,23 @@ export const createTicket = asyncHandler(async (req: Request, res: Response) => 
 });
 
 export const getTicket = asyncHandler(async (req: Request, res: Response) => {
-  const ticket = await Ticket.findById(req.params.id).populate('departmentId assignedAgentId createdBy timeline.by');
-  if (!ticket || ticket.isDeleted) {
+  const ticketId = req.params.id;
+  // Fetch ticket + replies in parallel; lean + field-selected populates keep
+  // the 3-second poll cheap instead of hydrating full Mongoose documents.
+  const [ticket, replies] = await Promise.all([
+    Ticket.findById(ticketId)
+      .populate('departmentId', 'name slug')
+      .populate('assignedAgentId', 'fullName email roleKey')
+      .populate('createdBy', 'fullName email roleKey companyName')
+      .populate('timeline.by', 'fullName email roleKey')
+      .lean(),
+    TicketReply.find({ ticketId })
+      .sort({ createdAt: 1 })
+      .populate('authorId', 'fullName email roleKey')
+      .lean()
+  ]);
+
+  if (!ticket || (ticket as { isDeleted?: boolean }).isDeleted) {
     throw new ApiError(404, 'Ticket not found');
   }
 
@@ -118,7 +146,6 @@ export const getTicket = asyncHandler(async (req: Request, res: Response) => {
   // Admins can view any ticket
   // Super admins can view any ticket
 
-  const replies = await TicketReply.find({ ticketId: ticket._id }).populate('authorId');
   res.json({ ticket, replies });
 });
 
@@ -274,14 +301,21 @@ export const changeTicketStatus = asyncHandler(async (req: Request, res: Respons
     ticket.closedAt = new Date();
     // Notify ticket creator
     await createNotification({ userId: ticketCreatorId, type: 'ticket_resolved', title: `Ticket ${ticket.ticketId} updated`, body: `Status changed to ${req.body.status}`, ticketId: ticket._id.toString() });
-    // Notify admins about high-priority resolved tickets
+    // Notify admins about high-priority resolved tickets (single batched write)
     if (['high', 'urgent'].includes(ticket.priority)) {
-      const admins = await User.find({ roleKey: { $in: ['admin', 'super_admin'] } });
-      for (const admin of admins) {
-        if (String(admin._id) !== ticketCreatorId) {
-          await createNotification({ userId: String(admin._id), type: 'ticket_resolved', title: `High-priority ticket ${ticket.ticketId} ${req.body.status}`, body: ticket.subject, ticketId: ticket._id.toString() });
-        }
-      }
+      const admins = await User.find({ roleKey: { $in: ['admin', 'super_admin'] } }).select('_id').lean();
+      const targets = admins
+        .map((admin) => String(admin._id))
+        .filter((adminId) => adminId !== ticketCreatorId);
+      await createManyNotifications(
+        targets.map((userId) => ({
+          userId,
+          type: 'ticket_resolved',
+          title: `High-priority ticket ${ticket.ticketId} ${req.body.status}`,
+          body: ticket.subject,
+          ticketId: ticket._id.toString()
+        }))
+      );
     }
   }
   if (req.body.status === 'reopened') {
@@ -413,7 +447,7 @@ export const replyToTicket = asyncHandler(async (req: Request, res: Response) =>
     isInternal: req.body.isInternal,
     attachments
   });
-  const populatedReply = await TicketReply.findById(reply._id).populate('authorId');
+  const populatedReply = await TicketReply.findById(reply._id).populate('authorId', 'fullName email roleKey').lean();
   res.status(201).json({ reply: populatedReply });
 });
 
